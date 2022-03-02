@@ -21,6 +21,8 @@ add_message_files(
    ClearWaypoints.srv
    InitCircularTrajectory.srv
    InitHelicalTrajectory.srv
+   InitStraightLineTrajectory.srv
+   InitSinusoidalCurveTrajectory.srv
    InitWaypointsFromFile.srv
    GetWaypoints.srv
    GoTo.srv

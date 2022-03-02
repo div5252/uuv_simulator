@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from itertools import cycle
 import rospy
 import logging
 import sys
@@ -264,6 +265,12 @@ class DPControllerLocalPlanner(object):
         self._services['start_helical_trajectory'] = rospy.Service(
             'start_helical_trajectory', InitHelicalTrajectory,
             self.start_helix)
+        self._services['start_straight_line_trajectory'] = rospy.Service(
+            'start_straight_line_trajectory', InitStraightLineTrajectory,
+            self.start_straight_line)
+        self._services['start_sinusoidal_curve_trajectory'] = rospy.Service(
+            'start_sinusoidal_curve_trajectory', InitSinusoidalCurveTrajectory,
+            self.start_sinusoidal_curve)
         self._services['init_waypoints_from_file'] = rospy.Service(
             'init_waypoints_from_file', InitWaypointsFromFile,
             self.init_waypoints_from_file)
@@ -826,6 +833,146 @@ class DPControllerLocalPlanner(object):
             self._lock.release()
             return InitHelicalTrajectoryResponse(False)
 
+    def start_straight_line(self, request):
+        if request.max_forward_speed <= 0 or \
+           request.n_points <= 0:
+            self._logger.error('Invalid parameters to generate a straight line trajectory')
+            return InitStraightLineTrajectoryResponse(False)
+        t = rospy.Time(request.start_time.data.secs, request.start_time.data.nsecs)
+        if t.to_sec() < rospy.get_time() and not request.start_now:
+            self._logger.error('The trajectory starts in the past, correct the starting time!')
+            return InitStraightLineTrajectoryResponse(False)
+        try:
+            wp_set = uuv_waypoints.WaypointSet(
+                inertial_frame_id=self.inertial_frame_id)
+            success = wp_set.generate_straight_line(start=request.start,
+                                                    end=request.end,
+                                                    num_points=request.n_points,
+                                                    max_forward_speed=request.max_forward_speed,
+                                                    heading_offset=request.heading_offset)
+            if not success:
+                self._logger.error('Error generating straight line trajectory from waypoint set')
+                return InitStraightLineTrajectoryResponse(False)
+            wp_set = self._apply_workspace_constraints(wp_set)
+            if wp_set.is_empty:
+                self._logger.error('Waypoints violate workspace constraints, are you using world or world_ned as reference?')
+                return InitStraightLineTrajectoryResponse(False)
+
+            self._lock.acquire()
+            # Activates station keeping
+            self.set_station_keeping(True)
+            self._traj_interpolator.set_interp_method('cubic')
+            self._traj_interpolator.set_waypoints(wp_set, self.get_vehicle_rot())
+            self._station_keeping_center = None
+            self._traj_interpolator.set_start_time((t.to_sec() if not request.start_now else rospy.get_time()))
+            if request.duration > 0:
+                if self._traj_interpolator.set_duration(request.duration):
+                    self._logger.info('Setting a maximum duration, duration=%.2f s' % request.duration)
+                else:
+                    self._logger.error('Setting maximum duration failed')
+            self._update_trajectory_info()
+            # Disables station keeping to start trajectory
+            self.set_station_keeping(False)
+            self.set_automatic_mode(True)
+            self.set_trajectory_running(True)
+            self._idle_circle_center = None
+            self._smooth_approach_on = True
+
+            self._logger.info('============================')
+            self._logger.info('STRAIGHT LINE TRAJECTORY GENERATED FROM WAYPOINT INTERPOLATION')
+            self._logger.info('============================')
+            self._logger.info('Start [m] =(%.2f, %.2f, %.2f)' % (request.start.x, request.start.y, request.start.z))
+            self._logger.info('End [m] = (%.2f, %.2f, %.2f)' % (request.end.x, request.end.y, request.end.z))
+            self._logger.info('# of points = %d' % request.n_points)
+            self._logger.info('Max. forward speed = %.2f' % request.max_forward_speed)
+            self._logger.info('Heading offset = %.2f' % request.heading_offset)
+            self._logger.info('# waypoints = %d' % self._traj_interpolator.get_waypoints().num_waypoints)
+            self._logger.info('Starting from = ' + str(self._traj_interpolator.get_waypoints().get_waypoint(0).pos))
+            self._logger.info('Starting time [s] = %.2f' % (t.to_sec() if not request.start_now else rospy.get_time()))
+            self._logger.info('============================')
+            self._lock.release()
+            return InitStraightLineTrajectoryResponse(True)
+        except Exception as e:
+            self._logger.error('Error while setting straight line trajectory, msg={}'.format(e))
+            self.set_station_keeping(True)
+            self.set_automatic_mode(False)
+            self.set_trajectory_running(False)
+            self._lock.release()
+            return InitStraightLineTrajectoryResponse(False)
+    
+    def start_sinusoidal_curve(self, request):
+        if request.max_forward_speed <= 0 or request.amplitude <= 0 or request.frequency <= 0 or \
+           request.cycles <= 0 or request.n_points <= 0:
+            self._logger.error('Invalid parameters to generate a sinusoidal curve trajectory')
+            return InitSinusoidalCurveTrajectoryResponse(False)
+        t = rospy.Time(request.start_time.data.secs, request.start_time.data.nsecs)
+        if t.to_sec() < rospy.get_time() and not request.start_now:
+            self._logger.error('The trajectory starts in the past, correct the starting time!')
+            return InitSinusoidalCurveTrajectoryResponse(False)
+        try:
+            wp_set = uuv_waypoints.WaypointSet(
+                inertial_frame_id=self.inertial_frame_id)
+            success = wp_set.generate_sinusoidal_curve(start=request.start,
+                                                       amplitude=request.amplitude,
+                                                       frequency=request.frequency,
+                                                       phase=request.phase,
+                                                       cycles=request.cycles,
+                                                       num_points=request.n_points,
+                                                       max_forward_speed=request.max_forward_speed,
+                                                       heading_offset=request.heading_offset)
+            if not success:
+                self._logger.error('Error generating sinusoidal curve trajectory from waypoint set')
+                return InitSinusoidalCurveTrajectoryResponse(False)
+            wp_set = self._apply_workspace_constraints(wp_set)
+            if wp_set.is_empty:
+                self._logger.error('Waypoints violate workspace constraints, are you using world or world_ned as reference?')
+                return InitSinusoidalCurveTrajectoryResponse(False)
+
+            self._lock.acquire()
+            # Activates station keeping
+            self.set_station_keeping(True)
+            self._traj_interpolator.set_interp_method('cubic')
+            self._traj_interpolator.set_waypoints(wp_set, self.get_vehicle_rot())
+            self._station_keeping_center = None
+            self._traj_interpolator.set_start_time((t.to_sec() if not request.start_now else rospy.get_time()))
+            if request.duration > 0:
+                if self._traj_interpolator.set_duration(request.duration):
+                    self._logger.info('Setting a maximum duration, duration=%.2f s' % request.duration)
+                else:
+                    self._logger.error('Setting maximum duration failed')
+            self._update_trajectory_info()
+            # Disables station keeping to start trajectory
+            self.set_station_keeping(False)
+            self.set_automatic_mode(True)
+            self.set_trajectory_running(True)
+            self._idle_circle_center = None
+            self._smooth_approach_on = True
+
+            self._logger.info('============================')
+            self._logger.info('SINUSOIDAL CURVE TRAJECTORY GENERATED FROM WAYPOINT INTERPOLATION')
+            self._logger.info('============================')
+            self._logger.info('Start [m] =(%.2f, %.2f, %.2f)' % (request.start.x, request.start.y, request.start.z))
+            self._logger.info('Amplitude = %.2f' % request.amplitude)
+            self._logger.info('Frequency = %.2f' % request.frequency)
+            self._logger.info('Phase = %.2f' % request.phase)
+            self._logger.info('# of Cycles = %d' % request.cycles)
+            self._logger.info('# of points = %d' % request.n_points)
+            self._logger.info('Max. forward speed = %.2f' % request.max_forward_speed)
+            self._logger.info('Heading offset = %.2f' % request.heading_offset)
+            self._logger.info('# waypoints = %d' % self._traj_interpolator.get_waypoints().num_waypoints)
+            self._logger.info('Starting from = ' + str(self._traj_interpolator.get_waypoints().get_waypoint(0).pos))
+            self._logger.info('Starting time [s] = %.2f' % (t.to_sec() if not request.start_now else rospy.get_time()))
+            self._logger.info('============================')
+            self._lock.release()
+            return InitSinusoidalCurveTrajectoryResponse(True)
+        except Exception as e:
+            self._logger.error('Error while setting sinusoidal curve trajectory, msg={}'.format(e))
+            self.set_station_keeping(True)
+            self.set_automatic_mode(False)
+            self.set_trajectory_running(False)
+            self._lock.release()
+            return InitSinusoidalCurveTrajectoryResponse(False)
+    
     def init_waypoints_from_file(self, request):
         """Service callback function to initialize the path interpolator
         with a set of waypoints loaded from a YAML file.

@@ -544,3 +544,63 @@ class WaypointSet(object):
                           heading_offset)
             self.add_waypoint(wp)
         return True
+
+    def generate_straight_line(self, start, end, num_points, max_forward_speed, heading_offset=0.0, append=False):
+        if num_points <= 0:
+            print('Invalid number of samples, value={}'.format(num_points))
+            return False
+
+        if max_forward_speed <= 0:
+            print('Invalid absolute maximum velocity, value={}'.format(max_forward_speed))
+            return False
+
+        if not append:
+            # Clear current list
+            self.clear_waypoints()
+
+        dx = (end.x - start.x) / (num_points - 1)
+        dy = (end.y - start.y) / (num_points - 1)
+        dz = (end.z - start.z) / (num_points - 1)
+        for i in range(num_points):
+            x = start.x + dx * i
+            y = start.y + dy * i
+            z = start.z + dz * i
+            wp = Waypoint(x, y, z, max_forward_speed,
+                          heading_offset)
+            self.add_waypoint(wp)
+        return True
+
+    def generate_sinusoidal_curve(self, start, amplitude, frequency, phase, cycles, num_points, max_forward_speed, heading_offset=0.0, append=False):
+        if amplitude <= 0:
+            print('Invalid amplitude, value={}'.format(amplitude))
+            return False
+
+        if frequency <= 0:
+            print('Invalid frequency, value={}'.format(frequency))
+            return False
+
+        if cycles <= 0:
+            print('Invalid number of cycles, value={}'.format(cycles))
+            return False
+
+        if num_points <= 0:
+            print('Invalid number of samples, value={}'.format(num_points))
+            return False
+
+        if max_forward_speed <= 0:
+            print('Invalid absolute maximum velocity, value={}'.format(max_forward_speed))
+            return False
+
+        if not append:
+            # Clear current list
+            self.clear_waypoints()
+
+        dx = cycles / ((num_points - 1) * frequency)
+        for i in range(num_points):
+            x = start.x + dx * i
+            y = start.y + amplitude * np.sin(2 * np.pi * frequency * dx * i + phase)
+            z = start.z
+            wp = Waypoint(x, y, z, max_forward_speed,
+                          heading_offset)
+            self.add_waypoint(wp)
+        return True
