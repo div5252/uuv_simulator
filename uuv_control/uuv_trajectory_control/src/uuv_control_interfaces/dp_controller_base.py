@@ -215,7 +215,7 @@ class DPControllerBase(object):
             self._logger.handlers.pop()
 
     @staticmethod
-    def get_controller(name, *args):
+    def get_controller(self, name, *args):
         """Create instance of a specific DP controller."""
         for controller in DPControllerBase.__subclasses__():
             if name == controller.__name__:
