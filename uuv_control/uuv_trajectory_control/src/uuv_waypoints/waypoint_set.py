@@ -22,6 +22,7 @@ from uuv_control_msgs.msg import WaypointSet as WaypointSetMessage
 from visualization_msgs.msg import Marker, MarkerArray
 from nav_msgs.msg import Path
 from geometry_msgs.msg import PoseStamped
+import math
 
 
 class WaypointSet(object):
@@ -603,4 +604,47 @@ class WaypointSet(object):
             wp = Waypoint(x, y, z, max_forward_speed,
                           heading_offset)
             self.add_waypoint(wp)
+        return True
+
+    def generate_l_shape(self, start, end, num_points, max_forward_speed, heading_offset=0.0, append=False):
+        if num_points <= 0:
+            print('Invalid number of samples, value={}'.format(num_points))
+            return False
+
+        if max_forward_speed <= 0:
+            print('Invalid absolute maximum velocity, value={}'.format(max_forward_speed))
+            return False
+
+        if not append:
+            # Clear current list
+            self.clear_waypoints()
+
+        # Assuming start and end points have y = 0
+        turn_point_x = (start.x + end.x) / 2
+        turn_point_y = (end.x - start.x) / 2
+        turn_point_z = start.z
+
+        num_points //= 2
+        dx1 = (turn_point_x - start.x) / (num_points - 1)
+        dy1 = (turn_point_y - start.y) / (num_points - 1)
+        dz1 = (turn_point_z - start.z) / (num_points - 1)
+        for i in range(num_points):
+            x = start.x + dx1 * i
+            y = start.y + dy1 * i
+            z = start.z + dz1 * i
+            wp = Waypoint(x, y, z, max_forward_speed,
+                          heading_offset)
+            self.add_waypoint(wp)
+
+        dx2 = (end.x - turn_point_x) / (num_points - 1)
+        dy2 = (end.y - turn_point_y) / (num_points - 1)
+        dz2 = (end.z - turn_point_z) / (num_points - 1)
+        for i in range(num_points):
+            x = turn_point_x + dx2 * i
+            y = turn_point_y + dy2 * i
+            z = turn_point_z + dz2 * i
+            wp = Waypoint(x, y, z, max_forward_speed,
+                          heading_offset)
+            self.add_waypoint(wp)
+
         return True

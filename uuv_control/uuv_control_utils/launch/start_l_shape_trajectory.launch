@@ -15,8 +15,8 @@
 
   <group ns="$(arg uuv_name)">
     <node pkg="uuv_control_utils"
-      type="start_straight_line_trajectory.py"
-      name="start_straight_line_trajectory"
+      type="start_l_shape_trajectory.py"
+      name="start_l_shape_trajectory"
       output="screen">
       <rosparam subst_value="true">
         start_time: $(arg start_time)

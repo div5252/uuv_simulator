@@ -23,6 +23,7 @@ add_message_files(
    InitHelicalTrajectory.srv
    InitStraightLineTrajectory.srv
    InitSinusoidalCurveTrajectory.srv
+   InitLShapeTrajectory.srv
    InitWaypointsFromFile.srv
    GetWaypoints.srv
    GoTo.srv

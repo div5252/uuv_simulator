@@ -12,6 +12,7 @@ catkin_install_python(PROGRAMS scripts/set_timed_current_perturbation.py
                                scripts/start_circular_trajectory.py
                                scripts/start_straight_line_trajectory.py
                                scripts/start_sinusoidal_curve_trajectory.py
+                               scripts/start_l_shape_trajectory.py
                                scripts/set_thruster_state.py
                                scripts/trajectory_marker_publisher.py
                                scripts/set_thruster_output_efficiency.py

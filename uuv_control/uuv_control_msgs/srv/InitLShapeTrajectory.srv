@@ -1,0 +1,10 @@
+std_msgs/Time start_time
+bool start_now
+geometry_msgs/Point start
+geometry_msgs/Point end
+int32 n_points
+float64 heading_offset
+float64 max_forward_speed
+float64 duration
+---
+bool success
